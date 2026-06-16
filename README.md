@@ -1,33 +1,42 @@
-# trading-view-app
+# sv
 
-This is a [Next.js](https://nextjs.org) project bootstrapped with [v0](https://v0.app).
+Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
 
-## Built with v0
+## Creating a project
 
-This repository is linked to a [v0](https://v0.app) project. You can continue developing by visiting the link below -- start new chats to make changes, and v0 will push commits directly to this repo. Every merge to `main` will automatically deploy.
+If you're seeing this, you've probably already done this step. Congrats!
 
-[Continue working on v0 →](https://v0.app/chat/projects/prj_O6enAFNBRz4waqn5E8eAHYuT1o3o)
-
-## Getting Started
-
-First, run the development server:
-
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
+```sh
+# create a new project
+npx sv create my-app
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+To recreate this project with the same configuration:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```sh
+# recreate this project
+pnpm dlx sv@0.16.1 create --template minimal --types ts --add tailwindcss="plugins:none" --install pnpm ./
+```
 
-## Learn More
+## Developing
 
-To learn more, take a look at the following resources:
+Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-- [v0 Documentation](https://v0.app/docs) - learn about v0 and how to use it.
+```sh
+npm run dev
+
+# or start the server and open the app in a new browser tab
+npm run dev -- --open
+```
+
+## Building
+
+To create a production version of your app:
+
+```sh
+npm run build
+```
+
+You can preview the production build with `npm run preview`.
+
+> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
