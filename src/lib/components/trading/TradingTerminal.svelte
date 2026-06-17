@@ -1,8 +1,8 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { getInstrument } from '$lib/market/instruments';
-  import { tickCandle } from '$lib/market/simulator';
-  import type { Candle, CandlesResponse, DataMode, Timeframe } from '$lib/market/types';
+  import { subscribeKline } from '$lib/market/binance-ws';
+  import type { Candle, CandlesResponse, Timeframe } from '$lib/market/types';
   import ChartToolbar from './ChartToolbar.svelte';
   import PriceChart from './PriceChart.svelte';
   import SymbolHeader from './SymbolHeader.svelte';
@@ -21,7 +21,6 @@
   let symbol = $state('BTCUSD');
   let timeframe = $state<Timeframe>('1H');
   let chartType = $state<ChartType>('candles');
-  let dataMode = $state<DataMode>('live');
   let indicators = $state<IndicatorState>({
     sma20: true, sma50: false, ema20: false, volume: true,
   });
@@ -29,34 +28,38 @@
   let watchlistOpen = $state(false);
 
   let candles = $state<Candle[]>([]);
-  let source = $state<DataMode>('live');
   let isLoading = $state(false);
+  let fetchError = $state<string | null>(null);
 
   const instrument = $derived(getInstrument(symbol));
 
-  // Fetch candles whenever symbol/timeframe/dataMode changes
+  // Fetch historical candles whenever symbol/timeframe changes
   $effect(() => {
-    // Track only these three — the rest is untracked
     const s = symbol;
     const tf = timeframe;
-    const mode = dataMode;
     let cancelled = false;
 
     async function load() {
-      untrack(() => { isLoading = true; });
+      untrack(() => { isLoading = true; fetchError = null; });
       try {
-        const res = await fetch(`/api/candles?symbol=${s}&tf=${tf}&mode=${mode}`);
-        const data: CandlesResponse = await res.json();
+        const res = await fetch(`/api/candles?symbol=${s}&tf=${tf}`);
+        const data = await res.json();
         if (!cancelled) {
           untrack(() => {
-            candles = data.candles;
-            source = data.source;
-            // Seed live candle directly here
-            if (data.candles.length) liveCandle = data.candles[data.candles.length - 1];
+            if (res.ok) {
+              const response = data as CandlesResponse;
+              candles = response.candles;
+              if (response.candles.length) liveCandle = response.candles[response.candles.length - 1];
+              fetchError = null;
+            } else {
+              candles = [];
+              liveCandle = null;
+              fetchError = data.error ?? 'Failed to fetch data';
+            }
           });
         }
       } catch {
-        // silently fail
+        if (!cancelled) untrack(() => { fetchError = 'Network error'; });
       } finally {
         if (!cancelled) untrack(() => { isLoading = false; });
       }
@@ -64,26 +67,38 @@
 
     load();
 
-    // Poll for live data
-    const interval = mode === 'live' ? setInterval(load, 15000) : undefined;
-
     return () => {
       cancelled = true;
-      if (interval) clearInterval(interval);
     };
   });
 
-  // Animate the most recent candle for a live feel
+  // Stream live kline updates via Binance WebSocket
   $effect(() => {
     const inst = instrument;
-    if (!inst) return;
-    const id = setInterval(() => {
-      // Read + write liveCandle inside untrack to avoid re-triggering this effect
+    const tf = timeframe;
+    if (!inst?.binance) return;
+
+    const unsub = subscribeKline(inst.binance, tf, (k) => {
       untrack(() => {
-        if (liveCandle) liveCandle = tickCandle(liveCandle, inst);
+        const updated: Candle = {
+          time: k.time,
+          open: k.open,
+          high: k.high,
+          low: k.low,
+          close: k.close,
+          volume: k.volume,
+        };
+
+        liveCandle = updated;
+
+        // If the kline is closed, append it to the candles array
+        if (k.closed) {
+          candles = [...candles, updated];
+        }
       });
-    }, 1200);
-    return () => clearInterval(id);
+    });
+
+    return unsub;
   });
 
   function handleSelect(s: string) {
@@ -107,14 +122,16 @@
           onChartType={(t) => (chartType = t)}
           {indicators}
           onIndicators={(i) => (indicators = i)}
-          {dataMode}
-          onDataMode={(m) => (dataMode = m)}
-          {source}
         />
         <div class="relative min-h-0 flex-1">
           {#if isLoading && candles.length === 0}
             <div class="flex h-full items-center justify-center">
               <span class="font-mono text-sm text-muted-foreground">Loading market data...</span>
+            </div>
+          {:else if fetchError && candles.length === 0}
+            <div class="flex h-full flex-col items-center justify-center gap-2">
+              <span class="font-mono text-sm text-muted-foreground">{fetchError}</span>
+              <span class="text-xs text-muted-foreground/60">Live data is only available for crypto instruments</span>
             </div>
           {:else}
             <PriceChart

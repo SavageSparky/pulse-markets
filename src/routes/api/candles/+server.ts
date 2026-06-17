@@ -1,8 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getInstrument } from '$lib/market/instruments';
-import { generateCandles } from '$lib/market/simulator';
-import type { Candle, CandlesResponse, DataMode, Timeframe } from '$lib/market/types';
+import type { Candle, CandlesResponse, Timeframe } from '$lib/market/types';
 import { TIMEFRAMES } from '$lib/market/types';
 
 const BINANCE_INTERVAL: Record<Timeframe, string> = {
@@ -37,7 +36,6 @@ async function fetchBinance(pair: string, tf: Timeframe, limit: number): Promise
 export const GET: RequestHandler = async ({ url }) => {
   const symbol = url.searchParams.get('symbol') ?? 'BTCUSD';
   const tf = (url.searchParams.get('tf') as Timeframe) ?? '1H';
-  const mode = (url.searchParams.get('mode') as DataMode) ?? 'live';
   const limit = Math.min(Number(url.searchParams.get('limit')) || 320, 500);
 
   const instrument = getInstrument(symbol);
@@ -45,20 +43,16 @@ export const GET: RequestHandler = async ({ url }) => {
     return json({ error: 'Unknown symbol or timeframe' }, { status: 400 });
   }
 
-  let candles: Candle[] | null = null;
-  let source: DataMode = 'simulated';
-
-  if (mode === 'live' && instrument.binance) {
-    candles = await fetchBinance(instrument.binance, tf, limit);
-    if (candles && candles.length) source = 'live';
+  if (!instrument.binance) {
+    return json({ error: 'Live data not available for this instrument' }, { status: 404 });
   }
 
-  if (!candles || !candles.length) {
-    candles = generateCandles(instrument, tf, limit);
-    source = 'simulated';
+  const candles = await fetchBinance(instrument.binance, tf, limit);
+  if (!candles || candles.length === 0) {
+    return json({ error: 'Failed to fetch live data' }, { status: 502 });
   }
 
-  const body: CandlesResponse = { symbol, timeframe: tf, source, candles };
+  const body: CandlesResponse = { symbol, timeframe: tf, candles };
   return json(body, {
     headers: { 'Cache-Control': 'no-store' }
   });

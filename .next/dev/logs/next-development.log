@@ -1,3 +1,0 @@
-{"timestamp":"00:09:43.219","source":"Server","level":"ERROR","message":"Error: ENOENT: no such file or directory, scandir 'D:\\Code\\trading-view-app\\app'"}
-{"timestamp":"00:09:43.221","source":"Server","level":"ERROR","message":"⨯ \"unhandledRejection:\" Error: ENOENT: no such file or directory, scandir 'D:\\Code\\trading-view-app\\app'"}
-{"timestamp":"00:09:43.222","source":"Server","level":"ERROR","message":"⨯ \"unhandledRejection: \" Error: ENOENT: no such file or directory, scandir 'D:\\Code\\trading-view-app\\app'"}

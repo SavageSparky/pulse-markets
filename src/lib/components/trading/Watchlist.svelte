@@ -2,8 +2,13 @@
   import { Star } from '@lucide/svelte';
   import { getInstrument } from '$lib/market/instruments';
   import { formatChange, formatPrice } from '$lib/market/indicators';
-  import { dayQuote, type Quote } from '$lib/market/quotes';
+  import { subscribeMiniTickers } from '$lib/market/binance-ws';
   import { cn } from '$lib/utils';
+
+  interface Quote {
+    price: number;
+    changePct: number;
+  }
 
   interface Props {
     symbols: string[];
@@ -13,38 +18,35 @@
 
   let { symbols, activeSymbol, onSelect }: Props = $props();
 
-  let base = $derived.by(() => {
-    const map: Record<string, Quote> = {};
+  let quotes = $state<Record<string, Quote>>({});
+
+  // Build a reverse map: Binance pair -> our symbol
+  const pairToSymbol = $derived.by(() => {
+    const map: Record<string, string> = {};
     for (const s of symbols) {
       const inst = getInstrument(s);
-      if (inst) map[s] = dayQuote(inst);
+      if (inst?.binance) map[inst.binance] = s;
     }
     return map;
   });
 
-  let quotes = $state<Record<string, Quote>>({});
-
-  // Sync quotes when base changes
+  // Subscribe to live mini-ticker WebSocket streams
   $effect(() => {
-    quotes = { ...base };
-  });
+    const pairs = Object.keys(pairToSymbol);
+    if (pairs.length === 0) return;
 
-  // Light ticking for live feel
-  $effect(() => {
-    const id = setInterval(() => {
-      const next: Record<string, Quote> = {};
-      for (const s of symbols) {
-        const q = quotes[s] ?? base[s];
-        if (!q) continue;
-        const inst = getInstrument(s);
-        const vol = inst?.category === 'crypto' ? 0.0015 : 0.0008;
-        const drift = (Math.random() - 0.5) * 2 * vol;
-        const price = q.price * (1 + drift);
-        next[s] = { price, changePct: q.changePct + drift * 100 };
+    const unsub = subscribeMiniTickers(pairs, (tickers) => {
+      const next = { ...quotes };
+      for (const t of tickers) {
+        const sym = pairToSymbol[t.symbol];
+        if (sym) {
+          next[sym] = { price: t.price, changePct: t.changePct };
+        }
       }
       quotes = next;
-    }, 1600);
-    return () => clearInterval(id);
+    });
+
+    return unsub;
   });
 </script>
 
@@ -58,9 +60,8 @@
   <div class="flex-1 overflow-y-auto">
     {#each symbols as s}
       {@const inst = getInstrument(s)}
-      {@const q = quotes[s] ?? base[s]}
-      {#if inst && q}
-        {@const up = q.changePct >= 0}
+      {@const q = quotes[s]}
+      {#if inst}
         {@const active = s === activeSymbol}
         <button
           onclick={() => onSelect(s)}
@@ -79,17 +80,22 @@
             <span class="block truncate text-[11px] text-muted-foreground">{inst.name}</span>
           </span>
           <span class="text-right">
-            <span class="block font-mono text-sm tabular-nums text-foreground">
-              {formatPrice(q.price, inst.currency)}
-            </span>
-            <span
-              class={cn(
-                'block font-mono text-[11px] tabular-nums',
-                up ? 'text-bull' : 'text-bear'
-              )}
-            >
-              {formatChange(q.changePct)}
-            </span>
+            {#if q}
+              {@const up = q.changePct >= 0}
+              <span class="block font-mono text-sm tabular-nums text-foreground">
+                {formatPrice(q.price, inst.currency)}
+              </span>
+              <span
+                class={cn(
+                  'block font-mono text-[11px] tabular-nums',
+                  up ? 'text-bull' : 'text-bear'
+                )}
+              >
+                {formatChange(q.changePct)}
+              </span>
+            {:else}
+              <span class="block font-mono text-[11px] text-muted-foreground/50">—</span>
+            {/if}
           </span>
         </button>
       {/if}

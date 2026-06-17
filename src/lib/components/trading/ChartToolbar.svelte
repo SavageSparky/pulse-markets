@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Activity, BarChart3, CandlestickChart, ChevronDown, LineChart, Radio } from '@lucide/svelte';
   import type { ChartType, IndicatorState } from './chart-types';
-  import { TIMEFRAMES, type DataMode, type Timeframe } from '$lib/market/types';
+  import { TIMEFRAMES, type Timeframe } from '$lib/market/types';
   import { cn } from '$lib/utils';
 
   interface Props {
@@ -11,12 +11,9 @@
     onChartType: (t: ChartType) => void;
     indicators: IndicatorState;
     onIndicators: (i: IndicatorState) => void;
-    dataMode: DataMode;
-    onDataMode: (m: DataMode) => void;
-    source: DataMode;
   }
 
-  let { timeframe, onTimeframe, chartType, onChartType, indicators, onIndicators, dataMode, onDataMode, source }: Props = $props();
+  let { timeframe, onTimeframe, chartType, onChartType, indicators, onIndicators }: Props = $props();
 
   let indicatorsOpen = $state(false);
   let activeCount = $derived(Object.values(indicators).filter(Boolean).length);
@@ -33,8 +30,6 @@
     { key: 'ema20', label: 'EMA 20', color: '#ff9f43' },
     { key: 'volume', label: 'Volume', color: '#8b93a7' },
   ];
-
-  const DATA_MODES: DataMode[] = ['live', 'simulated'];
 </script>
 
 <div class="flex flex-wrap items-center gap-2 border-b border-border bg-card/40 px-3 py-2">
@@ -117,30 +112,12 @@
   </div>
 
   <div class="ml-auto flex items-center gap-2">
-    <!-- Live source indicator -->
+    <!-- Live indicator -->
     <span
-      class={cn(
-        'hidden items-center gap-1.5 rounded-md px-2 py-1 font-mono text-[10px] uppercase tracking-wider sm:flex',
-        source === 'live' ? 'bg-bull/15 text-bull' : 'bg-muted text-muted-foreground'
-      )}
+      class="hidden items-center gap-1.5 rounded-md bg-bull/15 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-bull sm:flex"
     >
       <Radio class="size-3" />
-      {source === 'live' ? 'Live feed' : 'Simulated'}
+      Live feed
     </span>
-
-    <!-- Data mode toggle -->
-    <div class="flex items-center gap-0.5 rounded-md bg-secondary/60 p-0.5">
-      {#each DATA_MODES as m}
-        <button
-          onclick={() => onDataMode(m)}
-          class={cn(
-            'rounded px-2.5 py-1 font-mono text-[11px] font-medium capitalize transition-colors',
-            dataMode === m ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
-          )}
-        >
-          {m}
-        </button>
-      {/each}
-    </div>
   </div>
 </div>
