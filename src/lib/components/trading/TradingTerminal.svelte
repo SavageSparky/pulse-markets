@@ -131,7 +131,7 @@
           {:else if fetchError && candles.length === 0}
             <div class="flex h-full flex-col items-center justify-center gap-2">
               <span class="font-mono text-sm text-muted-foreground">{fetchError}</span>
-              <span class="text-xs text-muted-foreground/60">Live data is only available for crypto instruments</span>
+              <span class="text-xs text-muted-foreground/60">Try selecting a different symbol or timeframe</span>
             </div>
           {:else}
             <PriceChart

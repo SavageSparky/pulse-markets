@@ -3,6 +3,7 @@
   import { getInstrument } from '$lib/market/instruments';
   import { formatChange, formatPrice } from '$lib/market/indicators';
   import { subscribeMiniTickers } from '$lib/market/binance-ws';
+  import { subscribeYahooTickers } from '$lib/market/yahoo-ws';
   import { cn } from '$lib/utils';
 
   interface Quote {
@@ -30,7 +31,19 @@
     return map;
   });
 
-  // Subscribe to live mini-ticker WebSocket streams
+  // Build a reverse map: Yahoo symbol -> our symbol
+  const yahooToSymbol = $derived.by(() => {
+    const map: Record<string, string> = {};
+    for (const s of symbols) {
+      const inst = getInstrument(s);
+      if (inst?.yahoo && !inst.binance) {
+        map[inst.yahoo] = s;
+      }
+    }
+    return map;
+  });
+
+  // Subscribe to live mini-ticker WebSocket streams (crypto via Binance)
   $effect(() => {
     const pairs = Object.keys(pairToSymbol);
     if (pairs.length === 0) return;
@@ -47,6 +60,57 @@
     });
 
     return unsub;
+  });
+
+  // Yahoo Finance: initial REST fetch + real-time WebSocket overlay
+  $effect(() => {
+    const mapping = yahooToSymbol;
+    const yahooSymbols = Object.keys(mapping);
+    if (yahooSymbols.length === 0) return;
+
+    let cancelled = false;
+
+    // 1. Initial REST fetch to populate prices immediately (works even when market is closed)
+    async function fetchInitialQuotes() {
+      const appSymbols = Object.values(mapping);
+      try {
+        const res = await fetch(`/api/quotes?symbols=${appSymbols.join(',')}`);
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (cancelled) return;
+
+        const next = { ...quotes };
+        for (const q of data.quotes ?? []) {
+          // Only set if WebSocket hasn't already provided a fresher value
+          if (!next[q.symbol]) {
+            next[q.symbol] = { price: q.price, changePct: q.changePct };
+          }
+        }
+        quotes = next;
+      } catch {
+        // Ignore initial fetch errors
+      }
+    }
+
+    fetchInitialQuotes();
+
+    // 2. Yahoo WebSocket for real-time updates (overlays on top of initial fetch)
+    const unsub = subscribeYahooTickers(yahooSymbols, (tick) => {
+      const sym = mapping[tick.id];
+      if (!sym) return;
+
+      const next = { ...quotes };
+      next[sym] = {
+        price: tick.price,
+        changePct: tick.changePercent,
+      };
+      quotes = next;
+    });
+
+    return () => {
+      cancelled = true;
+      unsub();
+    };
   });
 </script>
 

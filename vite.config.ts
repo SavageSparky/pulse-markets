@@ -17,5 +17,11 @@ export default defineConfig({
 			// See https://svelte.dev/docs/kit/adapters for more information about adapters.
 			adapter: adapter()
 		})
-	]
+	],
+	resolve: {
+		alias: {
+			// protobufjs references 'fs' but never uses it in browser — stub it out
+			fs: 'data:text/javascript,export default {}'
+		}
+	}
 });

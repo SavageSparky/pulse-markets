@@ -10,6 +10,8 @@ export interface Instrument {
   currency: "USD" | "INR"
   /** Binance trading pair, present for crypto that has real data available */
   binance?: string
+  /** Yahoo Finance symbol, present for stocks / commodities */
+  yahoo?: string
 }
 
 export interface Candle {
