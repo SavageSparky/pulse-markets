@@ -9,7 +9,8 @@
   import TopBar from './TopBar.svelte';
   import Watchlist from './Watchlist.svelte';
   import { cn } from '$lib/utils';
-  import type { ChartType, IndicatorState } from './chart-types';
+  import type { ChartType, CompareSymbol, IndicatorConfig, IndicatorType } from './chart-types';
+  import { COMPARE_COLORS, createDefaultIndicators } from './chart-types';
 
   const DEFAULT_WATCHLIST = [
     'BTCUSD', 'ETHUSD', 'SOLUSD',
@@ -25,11 +26,7 @@
   let activeInstrument = $state<import('$lib/market/types').Instrument>(getInstrument('BTCUSD')!);
   let timeframe = $state<Timeframe>('1D');
   let chartType = $state<ChartType>('candles');
-  let indicators = $state<IndicatorState>({
-    sma50: true, sma100: false, sma200: false,
-    ema50: false, ema100: false, ema200: false,
-    volume: true,
-  });
+  let indicators = $state<IndicatorConfig[]>(createDefaultIndicators());
   let liveCandle = $state<Candle | null>(null);
   let watchlistOpen = $state(false);
 
@@ -39,6 +36,11 @@
   let hasReachedEnd = $state(false);
   let fetchError = $state<string | null>(null);
   let isClient = $state(false);
+
+  // Compare overlay state
+  let compareSymbols = $state<CompareSymbol[]>([]);
+  let compareCandles = $state<Map<string, Candle[]>>(new Map());
+  const isCompareMode = $derived(compareSymbols.length > 0);
 
   const defaultSymbols = new Set(DEFAULT_INSTRUMENTS.map(i => i.symbol));
 
@@ -75,11 +77,62 @@
     return Array.from(unique.values()).sort((a, b) => a.time - b.time);
   }
 
+  let nextIndicatorId = $state(100);
+
+  function addIndicator(type: IndicatorType) {
+    if (indicators.some(i => i.type === type)) return;
+    const id = `${type.toLowerCase()}-${nextIndicatorId++}`;
+    if (type === 'VOL') {
+      indicators = [...indicators, { id, type, visible: true, lines: [] }];
+    } else {
+      const defaults = type === 'SMA'
+        ? [{ period: 50, enabled: true, color: '#e3b341' }, { period: 100, enabled: false, color: '#4aa3df' }, { period: 200, enabled: false, color: '#8e44ad' }]
+        : [{ period: 50, enabled: true, color: '#f39c12' }, { period: 100, enabled: false, color: '#d35400' }, { period: 200, enabled: false, color: '#c0392b' }];
+      indicators = [...indicators, { id, type, visible: true, lines: defaults }];
+    }
+  }
+
+  function updateIndicator(id: string, updates: Partial<IndicatorConfig>) {
+    indicators = indicators.map(i => i.id === id ? { ...i, ...updates } : i);
+  }
+
+  function removeIndicator(id: string) {
+    indicators = indicators.filter(i => i.id !== id);
+  }
+
+  // Compare functions
+  function addCompare(inst: import('$lib/market/types').Instrument) {
+    if (compareSymbols.some(c => c.symbol === inst.symbol)) return;
+    if (inst.symbol === activeInstrument.symbol) return;
+    const color = COMPARE_COLORS[compareSymbols.length % COMPARE_COLORS.length];
+    compareSymbols = [...compareSymbols, {
+      symbol: inst.symbol,
+      yahoo: inst.yahoo,
+      name: inst.name,
+      color,
+      visible: true,
+    }];
+  }
+
+  function removeCompare(symbol: string) {
+    compareSymbols = compareSymbols.filter(c => c.symbol !== symbol);
+    const next = new Map(compareCandles);
+    next.delete(symbol);
+    compareCandles = next;
+  }
+
+  function toggleCompareVisibility(symbol: string) {
+    compareSymbols = compareSymbols.map(c => c.symbol === symbol ? { ...c, visible: !c.visible } : c);
+  }
+
   onMount(() => {
     isClient = true;
     try {
-      const savedPrefs = localStorage.getItem('indicator_prefs');
-      if (savedPrefs) indicators = { ...indicators, ...JSON.parse(savedPrefs) };
+      const savedPrefs = localStorage.getItem('indicator_prefs_v3');
+      if (savedPrefs) {
+        const parsed = JSON.parse(savedPrefs);
+        if (Array.isArray(parsed) && parsed.every((i: any) => 'lines' in i)) indicators = parsed;
+      }
     } catch {}
 
     try {
@@ -90,7 +143,7 @@
 
   $effect(() => {
     if (isClient) {
-      localStorage.setItem('indicator_prefs', JSON.stringify(indicators));
+      localStorage.setItem('indicator_prefs_v3', JSON.stringify(indicators));
       localStorage.setItem('custom_watchlist', JSON.stringify(customWatchlist));
     }
   });
@@ -134,6 +187,51 @@
     return () => {
       cancelled = true;
     };
+  });
+
+  // Force line chart when in compare mode
+  $effect(() => {
+    if (isCompareMode && chartType !== 'line') {
+      chartType = 'line';
+    }
+  });
+
+  // Fetch candle data for compare symbols
+  $effect(() => {
+    const symbols = compareSymbols;
+    const tf = timeframe;
+    let cancelled = false;
+
+    async function loadCompare() {
+      for (const cs of symbols) {
+        if (cancelled) return;
+        // Skip if we already have data for this symbol
+        if (compareCandles.has(cs.symbol)) continue;
+        try {
+          const ticker = cs.yahoo || cs.symbol;
+          const res = await fetch(`/api/candles?symbol=${encodeURIComponent(ticker)}&tf=${tf}`);
+          if (res.ok) {
+            const data: CandlesResponse = await res.json();
+            if (!cancelled) {
+              const next = new Map(compareCandles);
+              next.set(cs.symbol, data.candles);
+              compareCandles = next;
+            }
+          }
+        } catch { /* ignore */ }
+      }
+    }
+
+    loadCompare();
+    return () => { cancelled = true; };
+  });
+
+  // Clear compare candles when timeframe changes
+  $effect(() => {
+    timeframe; // track
+    untrack(() => {
+      compareCandles = new Map();
+    });
   });
 
   // Stream live kline updates via Binance WebSocket
@@ -224,8 +322,13 @@
           onTimeframe={(tf) => (timeframe = tf)}
           {chartType}
           onChartType={(t) => (chartType = t)}
+          onAddIndicator={addIndicator}
+          onRemoveIndicator={removeIndicator}
           {indicators}
-          onIndicators={(i) => (indicators = i)}
+          {isCompareMode}
+          {compareSymbols}
+          onAddCompare={addCompare}
+          onRemoveCompare={removeCompare}
         />
         <div class="relative min-h-0 flex-1">
           {#if isLoading && candles.length === 0}
@@ -245,6 +348,13 @@
               viewKey={`${activeInstrument.symbol}-${timeframe}`}
               {liveCandle}
               onLoadMore={loadMoreHistory}
+              onUpdateIndicator={updateIndicator}
+              onRemoveIndicator={removeIndicator}
+              {compareSymbols}
+              {compareCandles}
+              onRemoveCompare={removeCompare}
+              onToggleCompareVisibility={toggleCompareVisibility}
+              primarySymbol={activeInstrument.symbol}
             />
           {/if}
         </div>
