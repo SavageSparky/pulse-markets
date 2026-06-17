@@ -171,8 +171,8 @@ export const GET: RequestHandler = async ({ url }) => {
       symbol: symbol,
       name: symbol,
       exchange: '',
-      category: 'custom',
-      currency: '',
+      category: 'us-stocks',
+      currency: 'USD',
       yahoo: symbol
     };
   }

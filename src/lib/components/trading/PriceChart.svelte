@@ -435,6 +435,7 @@
                             c === ln.color ? 'border-foreground scale-110' : 'border-transparent'
                           )}
                           style:background-color={c}
+                          aria-label="Select color {c}"
                         ></button>
                       {/each}
                     </div>
