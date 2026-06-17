@@ -6,27 +6,28 @@
   import { subscribeYahooTickers } from '$lib/market/yahoo-ws';
   import { cn } from '$lib/utils';
 
+  import type { Instrument } from '$lib/market/types';
+
   interface Quote {
     price: number;
     changePct: number;
   }
 
   interface Props {
-    symbols: string[];
+    instruments: Instrument[];
     activeSymbol: string;
-    onSelect: (symbol: string) => void;
+    onSelect: (instrument: Instrument) => void;
   }
 
-  let { symbols, activeSymbol, onSelect }: Props = $props();
+  let { instruments, activeSymbol, onSelect }: Props = $props();
 
   let quotes = $state<Record<string, Quote>>({});
 
   // Build a reverse map: Binance pair -> our symbol
   const pairToSymbol = $derived.by(() => {
     const map: Record<string, string> = {};
-    for (const s of symbols) {
-      const inst = getInstrument(s);
-      if (inst?.binance) map[inst.binance] = s;
+    for (const inst of instruments) {
+      if (inst.binance) map[inst.binance] = inst.symbol;
     }
     return map;
   });
@@ -34,10 +35,9 @@
   // Build a reverse map: Yahoo symbol -> our symbol
   const yahooToSymbol = $derived.by(() => {
     const map: Record<string, string> = {};
-    for (const s of symbols) {
-      const inst = getInstrument(s);
-      if (inst?.yahoo && !inst.binance) {
-        map[inst.yahoo] = s;
+    for (const inst of instruments) {
+      if (inst.yahoo && !inst.binance) {
+        map[inst.yahoo] = inst.symbol;
       }
     }
     return map;
@@ -72,18 +72,18 @@
 
     // 1. Initial REST fetch to populate prices immediately (works even when market is closed)
     async function fetchInitialQuotes() {
-      const appSymbols = Object.values(mapping);
       try {
-        const res = await fetch(`/api/quotes?symbols=${appSymbols.join(',')}`);
+        const res = await fetch(`/api/quotes?symbols=${yahooSymbols.join(',')}`);
         if (!res.ok || cancelled) return;
         const data = await res.json();
         if (cancelled) return;
 
         const next = { ...quotes };
         for (const q of data.quotes ?? []) {
-          // Only set if WebSocket hasn't already provided a fresher value
-          if (!next[q.symbol]) {
-            next[q.symbol] = { price: q.price, changePct: q.changePct };
+          // q.symbol is the Yahoo ticker, we need to map it back to our symbol
+          const sym = mapping[q.symbol];
+          if (sym && !next[sym]) {
+            next[sym] = { price: q.price, changePct: q.changePct };
           }
         }
         quotes = next;
@@ -115,54 +115,54 @@
 </script>
 
 <div class="flex h-full flex-col">
+  <!-- Watchlist Header -->
   <div class="flex items-center justify-between border-b border-border px-4 py-3">
     <h2 class="font-mono text-xs font-semibold uppercase tracking-widest text-muted-foreground">
       Watchlist
     </h2>
-    <span class="font-mono text-[10px] text-muted-foreground">{symbols.length} symbols</span>
+    <span class="font-mono text-[10px] text-muted-foreground">{instruments.length} symbols</span>
   </div>
   <div class="flex-1 overflow-y-auto">
-    {#each symbols as s}
-      {@const inst = getInstrument(s)}
+    {#each instruments as inst}
+      {@const s = inst.symbol}
       {@const q = quotes[s]}
-      {#if inst}
-        {@const active = s === activeSymbol}
-        <button
-          onclick={() => onSelect(s)}
-          class={cn(
-            'flex w-full items-center justify-between border-l-2 px-4 py-2.5 text-left transition-colors hover:bg-accent/60',
-            active ? 'border-l-primary bg-accent/40' : 'border-l-transparent'
-          )}
-        >
-          <span class="min-w-0">
-            <span class="flex items-center gap-1.5">
-              {#if active}
-                <Star class="size-3 fill-primary text-primary" />
-              {/if}
-              <span class="font-mono text-sm font-medium text-foreground">{inst.symbol}</span>
-            </span>
-            <span class="block truncate text-[11px] text-muted-foreground">{inst.name}</span>
-          </span>
-          <span class="text-right">
-            {#if q}
-              {@const up = q.changePct >= 0}
-              <span class="block font-mono text-sm tabular-nums text-foreground">
-                {formatPrice(q.price, inst.currency)}
-              </span>
-              <span
-                class={cn(
-                  'block font-mono text-[11px] tabular-nums',
-                  up ? 'text-bull' : 'text-bear'
-                )}
-              >
-                {formatChange(q.changePct)}
-              </span>
-            {:else}
-              <span class="block font-mono text-[11px] text-muted-foreground/50">—</span>
+      {@const active = s === activeSymbol}
+      <button
+        onclick={() => onSelect(inst)}
+        class={cn(
+          'flex w-full items-center justify-between border-l-2 px-3 py-1.5 text-left transition-colors hover:bg-accent/60',
+          active ? 'border-l-primary bg-accent/40' : 'border-l-transparent'
+        )}
+      >
+        <span class="min-w-0">
+          <span class="flex items-center gap-1.5">
+            {#if active}
+              <Star class="size-3 fill-primary text-primary" />
             {/if}
+            <span class="font-mono text-sm font-medium text-foreground">{inst.symbol}</span>
           </span>
-        </button>
-      {/if}
+          <span class="block truncate text-[11px] text-muted-foreground">{inst.name}</span>
+        </span>
+        <span class="text-right">
+          {#if q}
+            {@const up = q.changePct >= 0}
+            <span class="block font-mono text-sm tabular-nums text-foreground">
+              {formatPrice(q.price, inst.currency)}
+            </span>
+            <span
+              class={cn(
+                'block font-mono text-[11px] tabular-nums',
+                up ? 'text-bull' : 'text-bear'
+              )}
+            >
+              {formatChange(q.changePct)}
+            </span>
+          {:else}
+            <span class="block font-mono text-[11px] text-muted-foreground/50">—</span>
+          {/if}
+        </span>
+      </button>
     {/each}
   </div>
 </div>
+

@@ -1,29 +1,49 @@
 <script lang="ts">
-  import { Search, X } from '@lucide/svelte';
+  import { Search, X, Loader2 } from '@lucide/svelte';
   import { INSTRUMENTS } from '$lib/market/instruments';
-  import { CATEGORY_LABELS, type Category, type Instrument } from '$lib/market/types';
+  import type { Instrument } from '$lib/market/types';
   import { cn } from '$lib/utils';
 
   interface Props {
-    onSelect: (symbol: string) => void;
+    onSelect: (inst: Instrument) => void;
   }
 
   let { onSelect }: Props = $props();
 
-  const CATEGORY_ORDER: Category[] = ['us-stocks', 'in-stocks', 'crypto', 'commodities'];
-
   let open = $state(false);
   let query = $state('');
   let wrapEl: HTMLDivElement;
+  let searchResults = $state<Instrument[]>([]);
+  let isSearching = $state(false);
 
-  let results = $derived.by(() => {
+  let searchTimeout: ReturnType<typeof setTimeout>;
+
+  $effect(() => {
     const q = query.trim().toLowerCase();
-    const list = q
-      ? INSTRUMENTS.filter((i) => i.symbol.toLowerCase().includes(q) || i.name.toLowerCase().includes(q))
-      : INSTRUMENTS;
-    const grouped: Record<string, Instrument[]> = {};
-    for (const i of list) (grouped[i.category] ??= []).push(i);
-    return grouped;
+    if (!q) {
+      // Show default popular instruments when query is empty
+      searchResults = INSTRUMENTS.slice(0, 8);
+      isSearching = false;
+      return;
+    }
+
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(async () => {
+      isSearching = true;
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+        if (res.ok) {
+          const data = await res.json();
+          searchResults = data.results || [];
+        }
+      } catch {
+        // ignore network errors
+      } finally {
+        isSearching = false;
+      }
+    }, 300);
+
+    return () => clearTimeout(searchTimeout);
   });
 
   $effect(() => {
@@ -45,8 +65,8 @@
     };
   });
 
-  function handleSelect(symbol: string) {
-    onSelect(symbol);
+  function handleSelect(inst: Instrument) {
+    onSelect(inst);
     open = false;
     query = '';
   }
@@ -75,27 +95,31 @@
 
   {#if open}
     <div class="absolute z-50 mt-2 max-h-[420px] w-full overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-2xl">
-      {#each CATEGORY_ORDER.filter((c) => results[c]?.length) as cat}
-        <div class="mb-1">
-          <p class="px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            {CATEGORY_LABELS[cat]}
-          </p>
-          {#each results[cat] as i}
-            <button
-              onclick={() => handleSelect(i.symbol)}
-              class={cn('flex w-full items-center justify-between rounded-md px-3 py-2 text-left hover:bg-accent')}
-            >
-              <span class="flex items-center gap-2">
-                <span class="font-mono text-sm font-medium text-foreground">{i.symbol}</span>
-                <span class="truncate text-xs text-muted-foreground">{i.name}</span>
-              </span>
-              <span class="font-mono text-[10px] text-muted-foreground">{i.exchange}</span>
-            </button>
-          {/each}
+      {#if isSearching}
+        <div class="flex items-center justify-center p-6 text-muted-foreground">
+          <Loader2 class="size-5 animate-spin" />
         </div>
-      {/each}
-      {#if Object.keys(results).length === 0}
-        <p class="px-3 py-6 text-center text-sm text-muted-foreground">No results found</p>
+      {:else}
+        {#if !query}
+          <p class="px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            Popular
+          </p>
+        {/if}
+        {#each searchResults as i}
+          <button
+            onclick={() => handleSelect(i)}
+            class={cn('flex w-full items-center justify-between rounded-md px-3 py-2 text-left hover:bg-accent')}
+          >
+            <span class="flex items-center gap-2 min-w-0">
+              <span class="font-mono text-sm font-medium text-foreground">{i.symbol}</span>
+              <span class="truncate text-xs text-muted-foreground">{i.name}</span>
+            </span>
+            <span class="shrink-0 font-mono text-[10px] text-muted-foreground">{i.exchange}</span>
+          </button>
+        {/each}
+        {#if searchResults.length === 0}
+          <p class="px-3 py-6 text-center text-sm text-muted-foreground">No results found for "{query}"</p>
+        {/if}
       {/if}
     </div>
   {/if}

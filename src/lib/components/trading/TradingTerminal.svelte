@@ -19,7 +19,10 @@
     'XAUUSD', 'WTIUSD'
   ];
 
-  let symbol = $state('BTCUSD');
+  const DEFAULT_INSTRUMENTS = DEFAULT_WATCHLIST.map(s => getInstrument(s)).filter(Boolean) as import('$lib/market/types').Instrument[];
+
+  let customWatchlist = $state<import('$lib/market/types').Instrument[]>([]);
+  let activeInstrument = $state<import('$lib/market/types').Instrument>(getInstrument('BTCUSD')!);
   let timeframe = $state<Timeframe>('1D');
   let chartType = $state<ChartType>('candles');
   let indicators = $state<IndicatorState>({
@@ -37,7 +40,31 @@
   let fetchError = $state<string | null>(null);
   let isClient = $state(false);
 
-  const instrument = $derived(getInstrument(symbol));
+  const defaultSymbols = new Set(DEFAULT_INSTRUMENTS.map(i => i.symbol));
+
+  // Expose toggleWatchlistItem method so SymbolHeader can call it
+  export function toggleWatchlistItem(inst: import('$lib/market/types').Instrument) {
+    // Don't allow removing default items; skip adding if already a default
+    if (defaultSymbols.has(inst.symbol)) return;
+
+    const exists = customWatchlist.some(i => i.symbol === inst.symbol);
+    if (exists) {
+      customWatchlist = customWatchlist.filter(i => i.symbol !== inst.symbol);
+    } else {
+      customWatchlist = [...customWatchlist, inst];
+    }
+  }
+
+  const isInWatchlist = $derived(
+    defaultSymbols.has(activeInstrument.symbol) ||
+    customWatchlist.some(i => i.symbol === activeInstrument.symbol)
+  );
+
+  // Deduplicate: custom items that overlap with defaults are excluded
+  let combinedWatchlist = $derived([
+    ...DEFAULT_INSTRUMENTS,
+    ...customWatchlist.filter(i => !defaultSymbols.has(i.symbol))
+  ]);
 
   function mergeCandles(oldCandles: Candle[], newCandles: Candle[]) {
     const combined = [...newCandles, ...oldCandles];
@@ -50,32 +77,36 @@
 
   onMount(() => {
     isClient = true;
-    const saved = localStorage.getItem('indicator_prefs');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        // Merge so we don't break if new keys are added
-        indicators = { ...indicators, ...parsed };
-      } catch {}
-    }
+    try {
+      const savedPrefs = localStorage.getItem('indicator_prefs');
+      if (savedPrefs) indicators = { ...indicators, ...JSON.parse(savedPrefs) };
+    } catch {}
+
+    try {
+      const savedWatchlist = localStorage.getItem('custom_watchlist');
+      if (savedWatchlist) customWatchlist = JSON.parse(savedWatchlist);
+    } catch {}
   });
 
   $effect(() => {
     if (isClient) {
       localStorage.setItem('indicator_prefs', JSON.stringify(indicators));
+      localStorage.setItem('custom_watchlist', JSON.stringify(customWatchlist));
     }
   });
 
-  // Fetch historical candles whenever symbol/timeframe changes
+  // Fetch historical candles whenever instrument/timeframe changes
   $effect(() => {
-    const s = symbol;
+    const inst = activeInstrument;
     const tf = timeframe;
     let cancelled = false;
 
     async function load() {
       untrack(() => { isLoading = true; fetchError = null; hasReachedEnd = false; isPaginating = false; });
       try {
-        const res = await fetch(`/api/candles?symbol=${s}&tf=${tf}`);
+        // We pass yahoo or binance ticker explicitly to backend if custom, else symbol
+        const s = inst.yahoo || inst.symbol;
+        const res = await fetch(`/api/candles?symbol=${encodeURIComponent(s)}&tf=${tf}`);
         const data = await res.json();
         if (!cancelled) {
           untrack(() => {
@@ -107,9 +138,9 @@
 
   // Stream live kline updates via Binance WebSocket
   $effect(() => {
-    const inst = instrument;
+    const inst = activeInstrument;
     const tf = timeframe;
-    if (!inst?.binance) return;
+    if (!inst.binance) return;
 
     const unsub = subscribeKline(inst.binance, tf, (k) => {
       untrack(() => {
@@ -138,13 +169,14 @@
     if (isPaginating || hasReachedEnd || candles.length === 0) return;
     
     // Capture current values in case they change during fetch
-    const s = symbol;
+    const inst = activeInstrument;
     const tf = timeframe;
     const endTime = candles[0].time;
 
     isPaginating = true;
     try {
-      const res = await fetch(`/api/candles?symbol=${s}&tf=${tf}&endTime=${endTime}`);
+      const s = inst.yahoo || inst.symbol;
+      const res = await fetch(`/api/candles?symbol=${encodeURIComponent(s)}&tf=${tf}&endTime=${endTime}`);
       if (res.ok) {
         const data = await res.json() as CandlesResponse;
         if (data.candles.length === 0) {
@@ -156,7 +188,7 @@
             hasReachedEnd = true;
           } else {
             // Check if symbol hasn't changed while fetching
-            if (symbol === s && timeframe === tf) {
+            if (activeInstrument === inst && timeframe === tf) {
               candles = mergeCandles(candles, newCandles);
             }
           }
@@ -167,14 +199,14 @@
     } catch {
       // Ignore network errors for background pagination
     } finally {
-      if (symbol === s && timeframe === tf) {
+      if (activeInstrument === inst && timeframe === tf) {
         isPaginating = false;
       }
     }
   }
 
-  function handleSelect(s: string) {
-    symbol = s;
+  function handleSelect(inst: import('$lib/market/types').Instrument) {
+    activeInstrument = inst;
     watchlistOpen = false;
   }
 </script>
@@ -185,8 +217,8 @@
   <div class="flex min-h-0 flex-1">
     <!-- Chart column -->
     <main class="flex min-w-0 flex-1 flex-col">
-      {#if instrument}
-        <SymbolHeader {instrument} {candles} {liveCandle} />
+      {#if activeInstrument}
+        <SymbolHeader instrument={activeInstrument} {candles} {liveCandle} isSaved={isInWatchlist} onToggleSave={() => toggleWatchlistItem(activeInstrument)} />
         <ChartToolbar
           {timeframe}
           onTimeframe={(tf) => (timeframe = tf)}
@@ -210,7 +242,7 @@
               {candles}
               {chartType}
               {indicators}
-              viewKey={`${symbol}-${timeframe}`}
+              viewKey={`${activeInstrument.symbol}-${timeframe}`}
               {liveCandle}
               onLoadMore={loadMoreHistory}
             />
@@ -221,7 +253,7 @@
 
     <!-- Watchlist (desktop) -->
     <aside class="hidden w-72 shrink-0 border-l border-border bg-sidebar lg:block">
-      <Watchlist symbols={DEFAULT_WATCHLIST} activeSymbol={symbol} onSelect={handleSelect} />
+      <Watchlist instruments={combinedWatchlist} activeSymbol={activeInstrument.symbol} onSelect={handleSelect} />
     </aside>
   </div>
 
@@ -239,7 +271,7 @@
           'absolute right-0 top-0 h-full w-72 border-l border-border bg-sidebar shadow-2xl'
         )}
       >
-        <Watchlist symbols={DEFAULT_WATCHLIST} activeSymbol={symbol} onSelect={handleSelect} />
+        <Watchlist instruments={combinedWatchlist} activeSymbol={activeInstrument.symbol} onSelect={handleSelect} />
       </aside>
     </div>
   {/if}

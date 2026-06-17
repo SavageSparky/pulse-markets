@@ -56,7 +56,8 @@ async function fetchBinance(pair: string, tf: Timeframe, limit: number, endTime?
       close: Number(r[4]),
       volume: Number(r[5])
     }));
-  } catch {
+  } catch (err) {
+    console.error('Binance fetch error:', err);
     return null;
   }
 }
@@ -146,7 +147,8 @@ async function fetchYahoo(yahooSymbol: string, tf: Timeframe, limit: number, end
     }
 
     return candles;
-  } catch {
+  } catch (err) {
+    console.error('Yahoo fetch error:', err);
     return null;
   }
 }
@@ -158,9 +160,21 @@ export const GET: RequestHandler = async ({ url }) => {
   const endTimeStr = url.searchParams.get('endTime');
   const endTime = endTimeStr ? Number(endTimeStr) : undefined;
 
-  const instrument = getInstrument(symbol);
-  if (!instrument || !TIMEFRAMES.includes(tf)) {
-    return json({ error: 'Unknown symbol or timeframe' }, { status: 400 });
+  let instrument = getInstrument(symbol);
+  if (!TIMEFRAMES.includes(tf)) {
+    return json({ error: 'Unknown timeframe' }, { status: 400 });
+  }
+
+  // If the symbol isn't in our hardcoded instruments list, assume it's a dynamic Yahoo Finance ticker from the search proxy
+  if (!instrument) {
+    instrument = {
+      symbol: symbol,
+      name: symbol,
+      exchange: '',
+      category: 'custom',
+      currency: '',
+      yahoo: symbol
+    };
   }
 
   // Try Binance first (crypto)
@@ -188,5 +202,5 @@ export const GET: RequestHandler = async ({ url }) => {
     return json({ error: 'No data source configured for this instrument' }, { status: 404 });
   }
 
-  return json({ error: 'Failed to fetch market data' }, { status: 502 });
+  return json({ error: 'No historical data available for this symbol on the requested timeframe' }, { status: 404 });
 };

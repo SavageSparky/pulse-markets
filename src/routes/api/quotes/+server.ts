@@ -10,22 +10,8 @@ export interface QuoteData {
 
 export const GET: RequestHandler = async ({ url }) => {
   const symbolsParam = url.searchParams.get('symbols') ?? '';
-  const symbols = symbolsParam.split(',').filter(Boolean);
+  const yahooSymbols = symbolsParam.split(',').filter(Boolean);
 
-  if (symbols.length === 0) {
-    return json({ quotes: [] });
-  }
-
-  // Collect Yahoo symbols that need fetching
-  const yahooToApp: Record<string, string> = {};
-  for (const s of symbols) {
-    const inst = getInstrument(s);
-    if (inst?.yahoo) {
-      yahooToApp[inst.yahoo] = s;
-    }
-  }
-
-  const yahooSymbols = Object.keys(yahooToApp);
   if (yahooSymbols.length === 0) {
     return json({ quotes: [] });
   }
@@ -56,7 +42,7 @@ export const GET: RequestHandler = async ({ url }) => {
         const changePct = prevClose > 0 ? ((price - prevClose) / prevClose) * 100 : 0;
 
         return {
-          symbol: yahooToApp[ySym],
+          symbol: ySym,
           price,
           changePct
         } satisfies QuoteData;

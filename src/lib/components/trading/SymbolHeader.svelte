@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArrowDownRight, ArrowUpRight } from '@lucide/svelte';
+  import { ArrowDownRight, ArrowUpRight, Star } from '@lucide/svelte';
   import { formatChange, formatCompact, formatPrice } from '$lib/market/indicators';
   import type { Candle, Instrument } from '$lib/market/types';
   import { cn } from '$lib/utils';
@@ -8,9 +8,11 @@
     instrument: Instrument;
     candles: Candle[];
     liveCandle: Candle | null;
+    isSaved?: boolean;
+    onToggleSave?: () => void;
   }
 
-  let { instrument, candles, liveCandle }: Props = $props();
+  let { instrument, candles, liveCandle, isSaved = false, onToggleSave }: Props = $props();
 
   let cur = $derived(instrument.currency);
   let last = $derived(liveCandle ?? candles[candles.length - 1]);
@@ -30,13 +32,18 @@
   <div class="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-border px-4 py-3">
     <div class="flex items-center gap-3">
       <div>
-        <div class="flex items-baseline gap-2">
+        <div class="flex items-center gap-2">
+          {#if onToggleSave}
+            <button onclick={onToggleSave} class="flex items-center justify-center transition-transform hover:scale-110 active:scale-95 outline-none">
+              <Star class={cn("size-5", isSaved ? "fill-primary text-primary" : "text-muted-foreground hover:text-foreground")} />
+            </button>
+          {/if}
           <h1 class="font-mono text-lg font-semibold text-foreground">{instrument.symbol}</h1>
           <span class="rounded bg-secondary px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
             {instrument.exchange}
           </span>
         </div>
-        <p class="text-xs text-muted-foreground">{instrument.name}</p>
+        <p class="text-xs text-muted-foreground pl-7">{instrument.name}</p>
       </div>
     </div>
 

@@ -1,9 +1,10 @@
 <script lang="ts">
   import { CandlestickChart, PanelRightOpen } from '@lucide/svelte';
   import SymbolSearch from './SymbolSearch.svelte';
+  import type { Instrument } from '$lib/market/types';
 
   interface Props {
-    onSelect: (symbol: string) => void;
+    onSelect: (inst: Instrument) => void;
     onToggleWatchlist: () => void;
   }
 
