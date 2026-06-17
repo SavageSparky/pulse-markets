@@ -156,10 +156,11 @@
   {#if watchlistOpen}
     <div class="fixed inset-0 z-50 lg:hidden">
       <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-      <div
-        class="absolute inset-0 bg-background/70 backdrop-blur-sm"
+      <button
+        class="absolute inset-0 w-full cursor-default border-none bg-background/70 backdrop-blur-sm"
+        aria-label="Close watchlist"
         onclick={() => (watchlistOpen = false)}
-      ></div>
+      ></button>
       <aside
         class={cn(
           'absolute right-0 top-0 h-full w-72 border-l border-border bg-sidebar shadow-2xl'

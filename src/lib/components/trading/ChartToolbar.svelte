@@ -84,7 +84,7 @@
     </button>
     {#if indicatorsOpen}
       <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-      <div class="fixed inset-0 z-40" onclick={() => (indicatorsOpen = false)}></div>
+      <button class="fixed inset-0 z-40 w-full cursor-default border-none bg-transparent" aria-label="Close indicators menu" onclick={() => (indicatorsOpen = false)}></button>
       <div class="absolute left-0 z-50 mt-2 w-44 rounded-lg border border-border bg-popover p-1 shadow-2xl">
         {#each INDICATOR_OPTIONS as { key, label, color }}
           <button
