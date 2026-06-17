@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { untrack, onMount } from 'svelte';
   import { getInstrument } from '$lib/market/instruments';
   import { subscribeKline } from '$lib/market/binance-ws';
   import type { Candle, CandlesResponse, Timeframe } from '$lib/market/types';
@@ -13,25 +13,58 @@
 
   const DEFAULT_WATCHLIST = [
     'BTCUSD', 'ETHUSD', 'SOLUSD',
-    'AAPL', 'NVDA', 'TSLA',
+    'NDX', 'SPX', 'AAPL', 'NVDA', 'TSLA',
+    'NIFTY50', 'NIFTYNXT50', 'NIFTYMID150', 'NIFTYSML250',
     'RELIANCE', 'TCS', 'INFY',
-    'XAUUSD', 'WTIUSD', 'ADANIENT',
+    'XAUUSD', 'WTIUSD'
   ];
 
   let symbol = $state('BTCUSD');
-  let timeframe = $state<Timeframe>('1H');
+  let timeframe = $state<Timeframe>('1D');
   let chartType = $state<ChartType>('candles');
   let indicators = $state<IndicatorState>({
-    sma20: true, sma50: false, ema20: false, volume: true,
+    sma50: true, sma100: false, sma200: false,
+    ema50: false, ema100: false, ema200: false,
+    volume: true,
   });
   let liveCandle = $state<Candle | null>(null);
   let watchlistOpen = $state(false);
 
   let candles = $state<Candle[]>([]);
   let isLoading = $state(false);
+  let isPaginating = $state(false);
+  let hasReachedEnd = $state(false);
   let fetchError = $state<string | null>(null);
+  let isClient = $state(false);
 
   const instrument = $derived(getInstrument(symbol));
+
+  function mergeCandles(oldCandles: Candle[], newCandles: Candle[]) {
+    const combined = [...newCandles, ...oldCandles];
+    const unique = new Map<number, Candle>();
+    for (const c of combined) {
+      unique.set(c.time, c);
+    }
+    return Array.from(unique.values()).sort((a, b) => a.time - b.time);
+  }
+
+  onMount(() => {
+    isClient = true;
+    const saved = localStorage.getItem('indicator_prefs');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Merge so we don't break if new keys are added
+        indicators = { ...indicators, ...parsed };
+      } catch {}
+    }
+  });
+
+  $effect(() => {
+    if (isClient) {
+      localStorage.setItem('indicator_prefs', JSON.stringify(indicators));
+    }
+  });
 
   // Fetch historical candles whenever symbol/timeframe changes
   $effect(() => {
@@ -40,7 +73,7 @@
     let cancelled = false;
 
     async function load() {
-      untrack(() => { isLoading = true; fetchError = null; });
+      untrack(() => { isLoading = true; fetchError = null; hasReachedEnd = false; isPaginating = false; });
       try {
         const res = await fetch(`/api/candles?symbol=${s}&tf=${tf}`);
         const data = await res.json();
@@ -48,7 +81,7 @@
           untrack(() => {
             if (res.ok) {
               const response = data as CandlesResponse;
-              candles = response.candles;
+              candles = mergeCandles([], response.candles);
               if (response.candles.length) liveCandle = response.candles[response.candles.length - 1];
               fetchError = null;
             } else {
@@ -93,13 +126,52 @@
 
         // If the kline is closed, append it to the candles array
         if (k.closed) {
-          candles = [...candles, updated];
+          candles = mergeCandles(candles, [updated]);
         }
       });
     });
 
     return unsub;
   });
+
+  async function loadMoreHistory() {
+    if (isPaginating || hasReachedEnd || candles.length === 0) return;
+    
+    // Capture current values in case they change during fetch
+    const s = symbol;
+    const tf = timeframe;
+    const endTime = candles[0].time;
+
+    isPaginating = true;
+    try {
+      const res = await fetch(`/api/candles?symbol=${s}&tf=${tf}&endTime=${endTime}`);
+      if (res.ok) {
+        const data = await res.json() as CandlesResponse;
+        if (data.candles.length === 0) {
+          hasReachedEnd = true;
+        } else {
+          // Prepend historical candles safely via mergeCandles
+          const newCandles = data.candles.filter(c => c.time < endTime);
+          if (newCandles.length === 0) {
+            hasReachedEnd = true;
+          } else {
+            // Check if symbol hasn't changed while fetching
+            if (symbol === s && timeframe === tf) {
+              candles = mergeCandles(candles, newCandles);
+            }
+          }
+        }
+      } else {
+        hasReachedEnd = true;
+      }
+    } catch {
+      // Ignore network errors for background pagination
+    } finally {
+      if (symbol === s && timeframe === tf) {
+        isPaginating = false;
+      }
+    }
+  }
 
   function handleSelect(s: string) {
     symbol = s;
@@ -140,6 +212,7 @@
               {indicators}
               viewKey={`${symbol}-${timeframe}`}
               {liveCandle}
+              onLoadMore={loadMoreHistory}
             />
           {/if}
         </div>

@@ -25,9 +25,12 @@
   ];
 
   const INDICATOR_OPTIONS: { key: keyof IndicatorState; label: string; color: string }[] = [
-    { key: 'sma20', label: 'SMA 20', color: '#e3b341' },
-    { key: 'sma50', label: 'SMA 50', color: '#4aa3df' },
-    { key: 'ema20', label: 'EMA 20', color: '#ff9f43' },
+    { key: 'sma50', label: 'SMA 50', color: '#e3b341' },
+    { key: 'sma100', label: 'SMA 100', color: '#4aa3df' },
+    { key: 'sma200', label: 'SMA 200', color: '#8e44ad' },
+    { key: 'ema50', label: 'EMA 50', color: '#f39c12' },
+    { key: 'ema100', label: 'EMA 100', color: '#d35400' },
+    { key: 'ema200', label: 'EMA 200', color: '#c0392b' },
     { key: 'volume', label: 'Volume', color: '#8b93a7' },
   ];
 </script>

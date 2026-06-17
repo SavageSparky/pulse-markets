@@ -11,7 +11,8 @@ const BINANCE_INTERVAL: Record<Timeframe, string> = {
   '1H': '1h',
   '4H': '4h',
   '1D': '1d',
-  '1W': '1w'
+  '1W': '1w',
+  '1M': '1M'
 };
 
 // Yahoo Finance uses different interval names and range constraints
@@ -22,7 +23,8 @@ const YAHOO_INTERVAL: Record<Timeframe, string> = {
   '1H': '1h',
   '4H': '1h',   // no 4h — we'll downsample from 1h
   '1D': '1d',
-  '1W': '1wk'
+  '1W': '1wk',
+  '1M': '1mo'
 };
 
 // Yahoo limits intraday data to specific ranges
@@ -33,12 +35,16 @@ const YAHOO_RANGE: Record<Timeframe, string> = {
   '1H': '2y',
   '4H': '2y',    // we fetch 1h and downsample
   '1D': '1y',
-  '1W': '5y'
+  '1W': '5y',
+  '1M': '10y'
 };
 
-async function fetchBinance(pair: string, tf: Timeframe, limit: number): Promise<Candle[] | null> {
+async function fetchBinance(pair: string, tf: Timeframe, limit: number, endTime?: number): Promise<Candle[] | null> {
   try {
-    const url = `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=${BINANCE_INTERVAL[tf]}&limit=${limit}`;
+    let url = `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=${BINANCE_INTERVAL[tf]}&limit=${limit}`;
+    if (endTime) {
+      url += `&endTime=${endTime * 1000}`;
+    }
     const res = await fetch(url);
     if (!res.ok) return null;
     const rows = (await res.json()) as unknown[][];
@@ -73,11 +79,22 @@ function downsample4H(hourly: Candle[]): Candle[] {
   return result;
 }
 
-async function fetchYahoo(yahooSymbol: string, tf: Timeframe, limit: number): Promise<Candle[] | null> {
+async function fetchYahoo(yahooSymbol: string, tf: Timeframe, limit: number, endTime?: number): Promise<Candle[] | null> {
   try {
     const interval = YAHOO_INTERVAL[tf];
-    const range = YAHOO_RANGE[tf];
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=${interval}&range=${range}`;
+    let url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=${interval}`;
+    
+    if (endTime) {
+      const period2 = endTime;
+      // Fetch more than requested limit to account for weekends/holidays where no candles exist
+      const tfSeconds = tf === '4H' ? 3600 : (tf === '1m' ? 60 : (tf === '1D' ? 86400 : 3600));
+      // Multiplier ensures we get enough trading days within calendar days
+      const period1 = period2 - (limit * tfSeconds * 5); 
+      url += `&period1=${period1}&period2=${period2}`;
+    } else {
+      const range = YAHOO_RANGE[tf];
+      url += `&range=${range}`;
+    }
 
     const res = await fetch(url, {
       headers: {
@@ -138,6 +155,8 @@ export const GET: RequestHandler = async ({ url }) => {
   const symbol = url.searchParams.get('symbol') ?? 'BTCUSD';
   const tf = (url.searchParams.get('tf') as Timeframe) ?? '1H';
   const limit = Math.min(Number(url.searchParams.get('limit')) || 320, 500);
+  const endTimeStr = url.searchParams.get('endTime');
+  const endTime = endTimeStr ? Number(endTimeStr) : undefined;
 
   const instrument = getInstrument(symbol);
   if (!instrument || !TIMEFRAMES.includes(tf)) {
@@ -146,16 +165,16 @@ export const GET: RequestHandler = async ({ url }) => {
 
   // Try Binance first (crypto)
   if (instrument.binance) {
-    const candles = await fetchBinance(instrument.binance, tf, limit);
+    const candles = await fetchBinance(instrument.binance, tf, limit, endTime);
     if (candles && candles.length > 0) {
       const body: CandlesResponse = { symbol, timeframe: tf, candles };
-      return json(body, { headers: { 'Cache-Control': 'no-store' } });
+      return json(body, { headers: { 'Cache-Control': 'public, max-age=60' } });
     }
   }
 
   // Try Yahoo Finance (stocks, commodities)
   if (instrument.yahoo) {
-    const candles = await fetchYahoo(instrument.yahoo, tf, limit);
+    const candles = await fetchYahoo(instrument.yahoo, tf, limit, endTime);
     if (candles && candles.length > 0) {
       const body: CandlesResponse = { symbol, timeframe: tf, candles };
       return json(body, {

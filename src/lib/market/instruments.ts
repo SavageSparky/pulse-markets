@@ -42,6 +42,14 @@ export const INSTRUMENTS: Instrument[] = [
   { symbol: "NATGAS", name: "Natural Gas", exchange: "NYMEX", category: "commodities", currency: "USD", yahoo: "NG=F" },
   { symbol: "COPPER", name: "Copper", exchange: "COMEX", category: "commodities", currency: "USD", yahoo: "HG=F" },
   { symbol: "PLATINUM", name: "Platinum", exchange: "NYMEX", category: "commodities", currency: "USD", yahoo: "PL=F" },
+
+  // Indices
+  { symbol: "NDX", name: "Nasdaq Composite", exchange: "NASDAQ", category: "indices", currency: "USD", yahoo: "^IXIC" },
+  { symbol: "SPX", name: "S&P 500", exchange: "CBOE", category: "indices", currency: "USD", yahoo: "^GSPC" },
+  { symbol: "NIFTY50", name: "Nifty 50", exchange: "NSE", category: "indices", currency: "INR", yahoo: "^NSEI" },
+  { symbol: "NIFTYNXT50", name: "Nifty Next 50", exchange: "NSE", category: "indices", currency: "INR", yahoo: "^NSMIDCP" },
+  { symbol: "NIFTYMID150", name: "Nifty Midcap 150", exchange: "NSE", category: "indices", currency: "INR", yahoo: "NIFTYMIDCAP150.NS" },
+  { symbol: "NIFTYSML250", name: "Nifty Smallcap 250", exchange: "NSE", category: "indices", currency: "INR", yahoo: "NIFTYSMLCAP250.NS" },
 ]
 
 const BY_SYMBOL = new Map(INSTRUMENTS.map((i) => [i.symbol, i]))

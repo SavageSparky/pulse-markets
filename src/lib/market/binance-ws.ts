@@ -10,6 +10,7 @@ const WS_INTERVAL: Record<Timeframe, string> = {
   '4H': '4h',
   '1D': '1d',
   '1W': '1w',
+  '1M': '1M',
 }
 
 export interface KlineMessage {
