@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { Star } from '@lucide/svelte';
-  import { getInstrument } from '$lib/market/instruments';
-  import { formatChange, formatPrice } from '$lib/market/indicators';
-  import { subscribeMiniTickers } from '$lib/market/binance-ws';
-  import { subscribeYahooTickers } from '$lib/market/yahoo-ws';
-  import { cn } from '$lib/utils';
+  import { Star } from "@lucide/svelte";
+  import { getInstrument } from "$lib/market/instruments";
+  import { formatChange, formatPrice } from "$lib/market/indicators";
+  import { subscribeMiniTickers } from "$lib/market/binance-ws";
+  import { subscribeYahooTickers } from "$lib/market/yahoo-ws";
+  import { cn } from "$lib/utils";
 
-  import type { Instrument } from '$lib/market/types';
+  import type { Instrument } from "$lib/market/types";
 
   interface Quote {
     price: number;
@@ -73,7 +73,9 @@
     // 1. Initial REST fetch to populate prices immediately (works even when market is closed)
     async function fetchInitialQuotes() {
       try {
-        const res = await fetch(`/api/quotes?symbols=${yahooSymbols.join(',')}`);
+        const res = await fetch(
+          `/api/quotes?symbols=${yahooSymbols.join(",")}`,
+        );
         if (!res.ok || cancelled) return;
         const data = await res.json();
         if (cancelled) return;
@@ -116,11 +118,17 @@
 
 <div class="flex h-full flex-col">
   <!-- Watchlist Header -->
-  <div class="flex items-center justify-between border-b border-border px-4 py-3">
-    <h2 class="font-mono text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+  <div
+    class="flex items-center justify-between border-b border-border px-4 py-3"
+  >
+    <h2
+      class="font-mono text-xs font-semibold uppercase tracking-widest text-muted-foreground"
+    >
       Watchlist
     </h2>
-    <span class="font-mono text-[10px] text-muted-foreground">{instruments.length} symbols</span>
+    <span class="font-mono text-[10px] text-muted-foreground"
+      >{instruments.length} symbols</span
+    >
   </div>
   <div class="flex-1 overflow-y-auto">
     {#each instruments as inst}
@@ -130,8 +138,8 @@
       <button
         onclick={() => onSelect(inst)}
         class={cn(
-          'flex w-full items-center justify-between border-l-2 px-3 py-1.5 text-left transition-colors hover:bg-accent/60',
-          active ? 'border-l-primary bg-accent/40' : 'border-l-transparent'
+          "flex w-full items-center justify-between border-l-2 px-3 py-1.5 text-left transition-colors hover:bg-accent/60",
+          active ? "border-l-primary bg-accent/40" : "border-l-transparent",
         )}
       >
         <span class="min-w-0">
@@ -139,9 +147,13 @@
             {#if active}
               <Star class="size-3 fill-primary text-primary" />
             {/if}
-            <span class="font-mono text-sm font-medium text-foreground">{inst.symbol}</span>
+            <span class="font-mono text-sm font-medium text-foreground"
+              >{inst.symbol}</span
+            >
           </span>
-          <span class="block truncate text-[11px] text-muted-foreground">{inst.name}</span>
+          <span class="block truncate text-[11px] text-muted-foreground"
+            >{inst.name}</span
+          >
         </span>
         <span class="text-right">
           {#if q}
@@ -151,18 +163,19 @@
             </span>
             <span
               class={cn(
-                'block font-mono text-[11px] tabular-nums',
-                up ? 'text-bull' : 'text-bear'
+                "block font-mono text-[11px] tabular-nums",
+                up ? "text-bull" : "text-bear",
               )}
             >
               {formatChange(q.changePct)}
             </span>
           {:else}
-            <span class="block font-mono text-[11px] text-muted-foreground/50">—</span>
+            <span class="block font-mono text-[11px] text-muted-foreground/50"
+              >—</span
+            >
           {/if}
         </span>
       </button>
     {/each}
   </div>
 </div>
-

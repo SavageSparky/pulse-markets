@@ -1,34 +1,56 @@
 <script lang="ts">
-  import { untrack, onMount } from 'svelte';
-  import { getInstrument } from '$lib/market/instruments';
-  import { subscribeKline } from '$lib/market/binance-ws';
-  import type { Candle, CandlesResponse, Timeframe } from '$lib/market/types';
-  import ChartToolbar from './ChartToolbar.svelte';
-  import PriceChart from './PriceChart.svelte';
-  import SymbolHeader from './SymbolHeader.svelte';
-  import TopBar from './TopBar.svelte';
-  import Watchlist from './Watchlist.svelte';
-  import { cn } from '$lib/utils';
-  import type { ChartType, CompareSymbol, IndicatorConfig, IndicatorType } from './chart-types';
-  import { COMPARE_COLORS, createDefaultIndicators } from './chart-types';
+  import { untrack, onMount } from "svelte";
+  import { getInstrument } from "$lib/market/instruments";
+  import { subscribeKline } from "$lib/market/binance-ws";
+  import type { Candle, CandlesResponse, Timeframe } from "$lib/market/types";
+  import ChartToolbar from "./ChartToolbar.svelte";
+  import PriceChart from "./PriceChart.svelte";
+  import SymbolHeader from "./SymbolHeader.svelte";
+  import TopBar from "./TopBar.svelte";
+  import Watchlist from "./Watchlist.svelte";
+  import { cn } from "$lib/utils";
+  import type {
+    ChartType,
+    CompareSymbol,
+    IndicatorConfig,
+    IndicatorType,
+  } from "./chart-types";
+  import { COMPARE_COLORS, createDefaultIndicators } from "./chart-types";
 
   const DEFAULT_WATCHLIST = [
-    'BTCUSD', 'ETHUSD', 'SOLUSD',
-    'NDX', 'SPX', 'AAPL', 'NVDA', 'TSLA',
-    'NIFTY50', 'NIFTYNXT50', 'NIFTYMID150', 'NIFTYSML250',
-    'RELIANCE', 'TCS', 'INFY',
-    'XAUUSD', 'WTIUSD'
+    "BTCUSD",
+    "ETHUSD",
+    "SOLUSD",
+    "NDX",
+    "SPX",
+    "AAPL",
+    "NVDA",
+    "TSLA",
+    "NIFTY50",
+    "NIFTYNXT50",
+    "NIFTYMID150",
+    "NIFTYSML250",
+    "RELIANCE",
+    "TCS",
+    "INFY",
+    "XAUUSD",
+    "WTIUSD",
   ];
 
-  const DEFAULT_INSTRUMENTS = DEFAULT_WATCHLIST.map(s => getInstrument(s)).filter(Boolean) as import('$lib/market/types').Instrument[];
+  const DEFAULT_INSTRUMENTS = DEFAULT_WATCHLIST.map((s) =>
+    getInstrument(s),
+  ).filter(Boolean) as import("$lib/market/types").Instrument[];
 
-  let customWatchlist = $state<import('$lib/market/types').Instrument[]>([]);
-  let activeInstrument = $state<import('$lib/market/types').Instrument>(getInstrument('BTCUSD')!);
-  let timeframe = $state<Timeframe>('1D');
-  let chartType = $state<ChartType>('candles');
+  let customWatchlist = $state<import("$lib/market/types").Instrument[]>([]);
+  let activeInstrument = $state<import("$lib/market/types").Instrument>(
+    getInstrument("BTCUSD")!,
+  );
+  let timeframe = $state<Timeframe>("1D");
+  let chartType = $state<ChartType>("candles");
   let indicators = $state<IndicatorConfig[]>(createDefaultIndicators());
   let liveCandle = $state<Candle | null>(null);
-  let watchlistOpen = $state(false);
+  let mobileWatchlistOpen = $state(false);
+  let desktopWatchlistOpen = $state(true);
 
   let candles = $state<Candle[]>([]);
   let isLoading = $state(false);
@@ -42,16 +64,18 @@
   let compareCandles = $state<Map<string, Candle[]>>(new Map());
   const isCompareMode = $derived(compareSymbols.length > 0);
 
-  const defaultSymbols = new Set(DEFAULT_INSTRUMENTS.map(i => i.symbol));
+  const defaultSymbols = new Set(DEFAULT_INSTRUMENTS.map((i) => i.symbol));
 
   // Expose toggleWatchlistItem method so SymbolHeader can call it
-  export function toggleWatchlistItem(inst: import('$lib/market/types').Instrument) {
+  export function toggleWatchlistItem(
+    inst: import("$lib/market/types").Instrument,
+  ) {
     // Don't allow removing default items; skip adding if already a default
     if (defaultSymbols.has(inst.symbol)) return;
 
-    const exists = customWatchlist.some(i => i.symbol === inst.symbol);
+    const exists = customWatchlist.some((i) => i.symbol === inst.symbol);
     if (exists) {
-      customWatchlist = customWatchlist.filter(i => i.symbol !== inst.symbol);
+      customWatchlist = customWatchlist.filter((i) => i.symbol !== inst.symbol);
     } else {
       customWatchlist = [...customWatchlist, inst];
     }
@@ -59,13 +83,13 @@
 
   const isInWatchlist = $derived(
     defaultSymbols.has(activeInstrument.symbol) ||
-    customWatchlist.some(i => i.symbol === activeInstrument.symbol)
+      customWatchlist.some((i) => i.symbol === activeInstrument.symbol),
   );
 
   // Deduplicate: custom items that overlap with defaults are excluded
   let combinedWatchlist = $derived([
     ...DEFAULT_INSTRUMENTS,
-    ...customWatchlist.filter(i => !defaultSymbols.has(i.symbol))
+    ...customWatchlist.filter((i) => !defaultSymbols.has(i.symbol)),
   ]);
 
   function mergeCandles(oldCandles: Candle[], newCandles: Candle[]) {
@@ -80,71 +104,101 @@
   let nextIndicatorId = $state(100);
 
   function addIndicator(type: IndicatorType) {
-    if (indicators.some(i => i.type === type)) return;
+    if (indicators.some((i) => i.type === type)) return;
     const id = `${type.toLowerCase()}-${nextIndicatorId++}`;
-    if (type === 'VOL') {
+    if (type === "VOL") {
       indicators = [...indicators, { id, type, visible: true, lines: [] }];
     } else {
-      const defaults = type === 'SMA'
-        ? [{ period: 50, enabled: true, color: '#e3b341' }, { period: 100, enabled: false, color: '#4aa3df' }, { period: 200, enabled: false, color: '#8e44ad' }]
-        : [{ period: 50, enabled: true, color: '#f39c12' }, { period: 100, enabled: false, color: '#d35400' }, { period: 200, enabled: false, color: '#c0392b' }];
-      indicators = [...indicators, { id, type, visible: true, lines: defaults }];
+      const defaults =
+        type === "SMA"
+          ? [
+              { period: 50, enabled: true, color: "#e3b341" },
+              { period: 100, enabled: false, color: "#4aa3df" },
+              { period: 200, enabled: false, color: "#8e44ad" },
+            ]
+          : [
+              { period: 50, enabled: true, color: "#f39c12" },
+              { period: 100, enabled: false, color: "#d35400" },
+              { period: 200, enabled: false, color: "#c0392b" },
+            ];
+      indicators = [
+        ...indicators,
+        { id, type, visible: true, lines: defaults },
+      ];
     }
   }
 
   function updateIndicator(id: string, updates: Partial<IndicatorConfig>) {
-    indicators = indicators.map(i => i.id === id ? { ...i, ...updates } : i);
+    indicators = indicators.map((i) =>
+      i.id === id ? { ...i, ...updates } : i,
+    );
   }
 
   function removeIndicator(id: string) {
-    indicators = indicators.filter(i => i.id !== id);
+    indicators = indicators.filter((i) => i.id !== id);
   }
 
   // Compare functions
-  function addCompare(inst: import('$lib/market/types').Instrument) {
-    if (compareSymbols.some(c => c.symbol === inst.symbol)) return;
+  function addCompare(inst: import("$lib/market/types").Instrument) {
+    if (compareSymbols.some((c) => c.symbol === inst.symbol)) return;
     if (inst.symbol === activeInstrument.symbol) return;
     const color = COMPARE_COLORS[compareSymbols.length % COMPARE_COLORS.length];
-    compareSymbols = [...compareSymbols, {
-      symbol: inst.symbol,
-      yahoo: inst.yahoo,
-      name: inst.name,
-      color,
-      visible: true,
-    }];
+    compareSymbols = [
+      ...compareSymbols,
+      {
+        symbol: inst.symbol,
+        yahoo: inst.yahoo,
+        name: inst.name,
+        color,
+        visible: true,
+      },
+    ];
   }
 
   function removeCompare(symbol: string) {
-    compareSymbols = compareSymbols.filter(c => c.symbol !== symbol);
+    compareSymbols = compareSymbols.filter((c) => c.symbol !== symbol);
     const next = new Map(compareCandles);
     next.delete(symbol);
     compareCandles = next;
   }
 
   function toggleCompareVisibility(symbol: string) {
-    compareSymbols = compareSymbols.map(c => c.symbol === symbol ? { ...c, visible: !c.visible } : c);
+    compareSymbols = compareSymbols.map((c) =>
+      c.symbol === symbol ? { ...c, visible: !c.visible } : c,
+    );
   }
 
   onMount(() => {
     isClient = true;
     try {
-      const savedPrefs = localStorage.getItem('indicator_prefs_v3');
+      const savedPrefs = localStorage.getItem("indicator_prefs_v3");
       if (savedPrefs) {
         const parsed = JSON.parse(savedPrefs);
-        if (Array.isArray(parsed) && parsed.every((i: any) => 'lines' in i)) indicators = parsed;
+        if (Array.isArray(parsed) && parsed.every((i: any) => "lines" in i))
+          indicators = parsed;
       }
     } catch {}
 
     try {
-      const savedWatchlist = localStorage.getItem('custom_watchlist');
+      const savedWatchlist = localStorage.getItem("custom_watchlist");
       if (savedWatchlist) customWatchlist = JSON.parse(savedWatchlist);
+    } catch {}
+
+    try {
+      const savedDesktop = localStorage.getItem("desktop_watchlist_open");
+      if (savedDesktop !== null)
+        desktopWatchlistOpen = JSON.parse(savedDesktop);
     } catch {}
   });
 
   $effect(() => {
     if (isClient) {
-      localStorage.setItem('indicator_prefs_v3', JSON.stringify(indicators));
-      localStorage.setItem('custom_watchlist', JSON.stringify(customWatchlist));
+      localStorage.setItem("indicator_prefs_v3", JSON.stringify(indicators));
+      localStorage.setItem("custom_watchlist", JSON.stringify(customWatchlist));
+      localStorage.setItem(
+        "desktop_watchlist_open",
+        JSON.stringify(desktopWatchlistOpen),
+      );
     }
   });
 
@@ -155,30 +209,44 @@
     let cancelled = false;
 
     async function load() {
-      untrack(() => { isLoading = true; fetchError = null; hasReachedEnd = false; isPaginating = false; });
+      untrack(() => {
+        isLoading = true;
+        fetchError = null;
+        hasReachedEnd = false;
+        isPaginating = false;
+      });
       try {
         // We pass yahoo or binance ticker explicitly to backend if custom, else symbol
         const s = inst.yahoo || inst.symbol;
-        const res = await fetch(`/api/candles?symbol=${encodeURIComponent(s)}&tf=${tf}`);
+        const res = await fetch(
+          `/api/candles?symbol=${encodeURIComponent(s)}&tf=${tf}`,
+        );
         const data = await res.json();
         if (!cancelled) {
           untrack(() => {
             if (res.ok) {
               const response = data as CandlesResponse;
               candles = mergeCandles([], response.candles);
-              if (response.candles.length) liveCandle = response.candles[response.candles.length - 1];
+              if (response.candles.length)
+                liveCandle = response.candles[response.candles.length - 1];
               fetchError = null;
             } else {
               candles = [];
               liveCandle = null;
-              fetchError = data.error ?? 'Failed to fetch data';
+              fetchError = data.error ?? "Failed to fetch data";
             }
           });
         }
       } catch {
-        if (!cancelled) untrack(() => { fetchError = 'Network error'; });
+        if (!cancelled)
+          untrack(() => {
+            fetchError = "Network error";
+          });
       } finally {
-        if (!cancelled) untrack(() => { isLoading = false; });
+        if (!cancelled)
+          untrack(() => {
+            isLoading = false;
+          });
       }
     }
 
@@ -191,8 +259,8 @@
 
   // Force line chart when in compare mode
   $effect(() => {
-    if (isCompareMode && chartType !== 'line') {
-      chartType = 'line';
+    if (isCompareMode && chartType !== "line") {
+      chartType = "line";
     }
   });
 
@@ -209,7 +277,9 @@
         if (compareCandles.has(cs.symbol)) continue;
         try {
           const ticker = cs.yahoo || cs.symbol;
-          const res = await fetch(`/api/candles?symbol=${encodeURIComponent(ticker)}&tf=${tf}`);
+          const res = await fetch(
+            `/api/candles?symbol=${encodeURIComponent(ticker)}&tf=${tf}`,
+          );
           if (res.ok) {
             const data: CandlesResponse = await res.json();
             if (!cancelled) {
@@ -218,12 +288,16 @@
               compareCandles = next;
             }
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
     }
 
     loadCompare();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   });
 
   // Clear compare candles when timeframe changes
@@ -265,7 +339,7 @@
 
   async function loadMoreHistory() {
     if (isPaginating || hasReachedEnd || candles.length === 0) return;
-    
+
     // Capture current values in case they change during fetch
     const inst = activeInstrument;
     const tf = timeframe;
@@ -274,14 +348,16 @@
     isPaginating = true;
     try {
       const s = inst.yahoo || inst.symbol;
-      const res = await fetch(`/api/candles?symbol=${encodeURIComponent(s)}&tf=${tf}&endTime=${endTime}`);
+      const res = await fetch(
+        `/api/candles?symbol=${encodeURIComponent(s)}&tf=${tf}&endTime=${endTime}`,
+      );
       if (res.ok) {
-        const data = await res.json() as CandlesResponse;
+        const data = (await res.json()) as CandlesResponse;
         if (data.candles.length === 0) {
           hasReachedEnd = true;
         } else {
           // Prepend historical candles safely via mergeCandles
-          const newCandles = data.candles.filter(c => c.time < endTime);
+          const newCandles = data.candles.filter((c) => c.time < endTime);
           if (newCandles.length === 0) {
             hasReachedEnd = true;
           } else {
@@ -303,20 +379,32 @@
     }
   }
 
-  function handleSelect(inst: import('$lib/market/types').Instrument) {
+  function handleSelect(inst: import("$lib/market/types").Instrument) {
     activeInstrument = inst;
-    watchlistOpen = false;
+    mobileWatchlistOpen = false;
   }
 </script>
 
 <div class="flex h-dvh flex-col overflow-hidden bg-background">
-  <TopBar onSelect={handleSelect} onToggleWatchlist={() => (watchlistOpen = !watchlistOpen)} />
+  <TopBar
+    onSelect={handleSelect}
+    onToggleMobileWatchlist={() => (mobileWatchlistOpen = !mobileWatchlistOpen)}
+    onToggleDesktopWatchlist={() =>
+      (desktopWatchlistOpen = !desktopWatchlistOpen)}
+    {desktopWatchlistOpen}
+  />
 
   <div class="flex min-h-0 flex-1">
     <!-- Chart column -->
     <main class="flex min-w-0 flex-1 flex-col">
       {#if activeInstrument}
-        <SymbolHeader instrument={activeInstrument} {candles} {liveCandle} isSaved={isInWatchlist} onToggleSave={() => toggleWatchlistItem(activeInstrument)} />
+        <SymbolHeader
+          instrument={activeInstrument}
+          {candles}
+          {liveCandle}
+          isSaved={isInWatchlist}
+          onToggleSave={() => toggleWatchlistItem(activeInstrument)}
+        />
         <ChartToolbar
           {timeframe}
           onTimeframe={(tf) => (timeframe = tf)}
@@ -333,12 +421,18 @@
         <div class="relative min-h-0 flex-1">
           {#if isLoading && candles.length === 0}
             <div class="flex h-full items-center justify-center">
-              <span class="font-mono text-sm text-muted-foreground">Loading market data...</span>
+              <span class="font-mono text-sm text-muted-foreground"
+                >Loading market data...</span
+              >
             </div>
           {:else if fetchError && candles.length === 0}
             <div class="flex h-full flex-col items-center justify-center gap-2">
-              <span class="font-mono text-sm text-muted-foreground">{fetchError}</span>
-              <span class="text-xs text-muted-foreground/60">Try selecting a different symbol or timeframe</span>
+              <span class="font-mono text-sm text-muted-foreground"
+                >{fetchError}</span
+              >
+              <span class="text-xs text-muted-foreground/60"
+                >Try selecting a different symbol or timeframe</span
+              >
             </div>
           {:else}
             <PriceChart
@@ -362,26 +456,38 @@
     </main>
 
     <!-- Watchlist (desktop) -->
-    <aside class="hidden w-72 shrink-0 border-l border-border bg-sidebar lg:block">
-      <Watchlist instruments={combinedWatchlist} activeSymbol={activeInstrument.symbol} onSelect={handleSelect} />
-    </aside>
+    {#if desktopWatchlistOpen}
+      <aside
+        class="hidden w-72 shrink-0 border-l border-border bg-sidebar lg:block"
+      >
+        <Watchlist
+          instruments={combinedWatchlist}
+          activeSymbol={activeInstrument.symbol}
+          onSelect={handleSelect}
+        />
+      </aside>
+    {/if}
   </div>
 
   <!-- Watchlist (mobile drawer) -->
-  {#if watchlistOpen}
+  {#if mobileWatchlistOpen}
     <div class="fixed inset-0 z-50 lg:hidden">
       <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
       <button
         class="absolute inset-0 w-full cursor-default border-none bg-background/70 backdrop-blur-sm"
         aria-label="Close watchlist"
-        onclick={() => (watchlistOpen = false)}
+        onclick={() => (mobileWatchlistOpen = false)}
       ></button>
       <aside
         class={cn(
-          'absolute right-0 top-0 h-full w-72 border-l border-border bg-sidebar shadow-2xl'
+          "absolute right-0 top-0 h-full w-72 border-l border-border bg-sidebar shadow-2xl",
         )}
       >
-        <Watchlist instruments={combinedWatchlist} activeSymbol={activeInstrument.symbol} onSelect={handleSelect} />
+        <Watchlist
+          instruments={combinedWatchlist}
+          activeSymbol={activeInstrument.symbol}
+          onSelect={handleSelect}
+        />
       </aside>
     </div>
   {/if}
