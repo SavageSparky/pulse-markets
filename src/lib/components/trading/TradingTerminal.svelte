@@ -214,6 +214,7 @@
         fetchError = null;
         hasReachedEnd = false;
         isPaginating = false;
+        candles = [];
       });
       try {
         // We pass yahoo or binance ticker explicitly to backend if custom, else symbol
