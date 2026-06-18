@@ -43,10 +43,16 @@
     return map;
   });
 
+  // Derive string representations of our subscription targets to prevent unnecessary effect re-runs
+  // if the map evaluates to a new object with the exact same contents.
+  const binancePairsStr = $derived(Object.keys(pairToSymbol).sort().join(','));
+  const yahooSymbolsStr = $derived(Object.keys(yahooToSymbol).sort().join(','));
+
   // Subscribe to live mini-ticker WebSocket streams (crypto via Binance)
   $effect(() => {
-    const pairs = Object.keys(pairToSymbol);
-    if (pairs.length === 0) return;
+    if (!binancePairsStr) return;
+    const pairs = binancePairsStr.split(',');
+    if (pairs.length === 0 || pairs[0] === '') return;
 
     const unsub = subscribeMiniTickers(pairs, (tickers) => {
       const next = { ...quotes };
@@ -64,9 +70,10 @@
 
   // Yahoo Finance: initial REST fetch + real-time WebSocket overlay
   $effect(() => {
+    if (!yahooSymbolsStr) return;
+    const yahooSymbols = yahooSymbolsStr.split(',');
+    if (yahooSymbols.length === 0 || yahooSymbols[0] === '') return;
     const mapping = yahooToSymbol;
-    const yahooSymbols = Object.keys(mapping);
-    if (yahooSymbols.length === 0) return;
 
     let cancelled = false;
 

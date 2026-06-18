@@ -110,14 +110,15 @@
   <!-- Chart type -->
   <div class="flex items-center gap-0.5 rounded-md bg-secondary/60 p-0.5">
     {#each CHART_TYPES as { type, icon: Icon, label }}
+      {@const disabled = isCompareMode && type === 'candles'}
       <button
-        onclick={() => !isCompareMode && onChartType(type)}
-        title={isCompareMode && type !== 'line' ? 'Line only in compare mode' : label}
+        onclick={() => !disabled && onChartType(type)}
+        title={disabled ? 'Candles not available in compare mode' : label}
         aria-label={label}
         class={cn(
           'rounded p-1.5 transition-colors',
           chartType === type ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
-          isCompareMode && type !== 'line' && 'opacity-30 cursor-not-allowed'
+          disabled && 'opacity-30 cursor-not-allowed'
         )}
       >
         <Icon class="size-4" />
@@ -129,8 +130,12 @@
 
   <!-- Indicators -->
   <button
-    onclick={() => (indicatorModalOpen = true)}
-    class="flex items-center gap-1.5 rounded-md bg-secondary/60 px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-secondary"
+    onclick={() => !isCompareMode && (indicatorModalOpen = true)}
+    title={isCompareMode ? 'Indicators hidden in compare mode' : 'Indicators'}
+    class={cn(
+      'flex items-center gap-1.5 rounded-md bg-secondary/60 px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-secondary',
+      isCompareMode && 'opacity-30 cursor-not-allowed'
+    )}
   >
     <Plus class="size-3.5 text-muted-foreground" />
     Indicators

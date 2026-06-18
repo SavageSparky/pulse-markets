@@ -35,29 +35,54 @@ export function subscribeKline(
   onUpdate: (k: KlineMessage) => void,
 ): () => void {
   const stream = `${pair.toLowerCase()}@kline_${WS_INTERVAL[tf]}`
-  const ws = new WebSocket(`${BINANCE_WS}/${stream}`)
+  
+  let ws: WebSocket | null = null;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let closed = false;
 
-  ws.onmessage = (event) => {
-    try {
-      const msg = JSON.parse(event.data)
-      const k = msg.k
-      if (!k) return
-      onUpdate({
-        time: Math.floor(k.t / 1000),
-        open: Number(k.o),
-        high: Number(k.h),
-        low: Number(k.l),
-        close: Number(k.c),
-        volume: Number(k.v),
-        closed: k.x,
-      })
-    } catch {
-      // ignore parse errors
+  function connect() {
+    if (closed) return;
+    ws = new WebSocket(`${BINANCE_WS}/${stream}`)
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data)
+        const k = msg.k
+        if (!k) return
+        onUpdate({
+          time: Math.floor(k.t / 1000),
+          open: Number(k.o),
+          high: Number(k.h),
+          low: Number(k.l),
+          close: Number(k.c),
+          volume: Number(k.v),
+          closed: k.x,
+        })
+      } catch {
+        // ignore parse errors
+      }
+    }
+
+    ws.onclose = () => {
+      if (!closed) {
+        reconnectTimer = setTimeout(connect, 5000);
+      }
+    }
+
+    ws.onerror = () => {
+      // will trigger onclose
     }
   }
 
+  connect();
+
   return () => {
-    ws.close()
+    closed = true;
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    if (ws) {
+      ws.onclose = null;
+      ws.close();
+    }
   }
 }
 
@@ -79,26 +104,53 @@ export function subscribeMiniTickers(
   if (pairs.length === 0) return () => {}
 
   const streams = pairs.map((p) => `${p.toLowerCase()}@miniTicker`).join('/')
-  const ws = new WebSocket(`wss://stream.binance.com:9443/stream?streams=${streams}`)
+  
+  let ws: WebSocket | null = null;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let closed = false;
 
-  ws.onmessage = (event) => {
-    try {
-      const msg = JSON.parse(event.data)
-      // Combined stream wraps data in { stream, data }
-      const d = msg.data ?? msg
-      if (d.e === '24hrMiniTicker') {
-        onUpdate([{
-          symbol: d.s,
-          price: Number(d.c),      // close price
-          changePct: ((Number(d.c) - Number(d.o)) / Number(d.o)) * 100,
-        }])
+  function connect() {
+    if (closed) return;
+    ws = new WebSocket(`wss://stream.binance.com:9443/stream?streams=${streams}`)
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data)
+        // Combined stream wraps data in { stream, data }
+        const d = msg.data ?? msg
+        
+        // If we have close price and symbol, process the ticker
+        if (d.c && d.s) {
+          onUpdate([{
+            symbol: d.s,
+            price: Number(d.c),      // close price
+            changePct: ((Number(d.c) - Number(d.o)) / Number(d.o)) * 100,
+          }])
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
+    }
+
+    ws.onclose = () => {
+      if (!closed) {
+        reconnectTimer = setTimeout(connect, 5000);
+      }
+    }
+
+    ws.onerror = () => {
+      // will trigger onclose
     }
   }
 
+  connect();
+
   return () => {
-    ws.close()
+    closed = true;
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    if (ws) {
+      ws.onclose = null;
+      ws.close();
+    }
   }
 }

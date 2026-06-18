@@ -57,6 +57,9 @@
     line: '#4aa3df',
     areaTop: 'rgba(74,163,223,0.35)',
     areaBottom: 'rgba(74,163,223,0.02)',
+    comparePrimary: '#e2e8f0',
+    comparePrimaryAreaTop: 'rgba(226,232,240,0.25)',
+    comparePrimaryAreaBottom: 'rgba(226,232,240,0.02)',
   };
 
   let containerEl: HTMLDivElement;
@@ -153,32 +156,38 @@
       s.setData(candles.map((c) => ({ time: c.time as UTCTimestamp, open: c.open, high: c.high, low: c.low, close: c.close })));
       mainSeries = s;
     } else if (chartType === 'area') {
-      const s = chart.addSeries(AreaSeries, { lineColor: COLORS.line, topColor: COLORS.areaTop, bottomColor: COLORS.areaBottom, lineWidth: 2 });
+      const lineColor = isCompareMode ? COLORS.comparePrimary : COLORS.line;
+      const topColor = isCompareMode ? COLORS.comparePrimaryAreaTop : COLORS.areaTop;
+      const bottomColor = isCompareMode ? COLORS.comparePrimaryAreaBottom : COLORS.areaBottom;
+      const s = chart.addSeries(AreaSeries, { lineColor, topColor, bottomColor, lineWidth: 2 });
       s.setData(candles.map((c) => ({ time: c.time as UTCTimestamp, value: c.close })));
       mainSeries = s;
     } else {
-      const s = chart.addSeries(LineSeries, { color: COLORS.line, lineWidth: 2 });
+      const color = isCompareMode ? COLORS.comparePrimary : COLORS.line;
+      const s = chart.addSeries(LineSeries, { color, lineWidth: 2 });
       s.setData(candles.map((c) => ({ time: c.time as UTCTimestamp, value: c.close })));
       mainSeries = s;
     }
 
-    // Process indicators
-    for (const ind of indicators) {
-      if (!ind.visible) continue;
+    // Process indicators (hidden in compare mode)
+    if (!isCompareMode) {
+      for (const ind of indicators) {
+        if (!ind.visible) continue;
 
-      if (ind.type === 'VOL') {
-        const v = chart.addSeries(HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: 'vol' });
-        v.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
-        v.setData(candles.map((c) => ({ time: c.time as UTCTimestamp, value: c.volume, color: c.close >= c.open ? COLORS.bullVol : COLORS.bearVol })));
-        volumeSeries = v;
-      } else {
-        const calcFn = ind.type === 'SMA' ? sma : ema;
-        for (const ln of ind.lines) {
-          if (!ln.enabled) continue;
-          const points = calcFn(candles, ln.period);
-          const line = chart.addSeries(LineSeries, { color: ln.color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
-          line.setData(points.map((p) => ({ time: p.time as UTCTimestamp, value: p.value })));
-          overlaySeries.push(line);
+        if (ind.type === 'VOL') {
+          const v = chart.addSeries(HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: 'vol' });
+          v.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+          v.setData(candles.map((c) => ({ time: c.time as UTCTimestamp, value: c.volume, color: c.close >= c.open ? COLORS.bullVol : COLORS.bearVol })));
+          volumeSeries = v;
+        } else {
+          const calcFn = ind.type === 'SMA' ? sma : ema;
+          for (const ln of ind.lines) {
+            if (!ln.enabled) continue;
+            const points = calcFn(candles, ln.period);
+            const line = chart.addSeries(LineSeries, { color: ln.color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+            line.setData(points.map((p) => ({ time: p.time as UTCTimestamp, value: p.value })));
+            overlaySeries.push(line);
+          }
         }
       }
     }
@@ -190,19 +199,38 @@
         const data = compareCandles.get(cs.symbol);
         if (!data || data.length === 0) continue;
 
-        const line = chart.addSeries(LineSeries, {
-          color: cs.color,
-          lineWidth: 2,
-          priceLineVisible: false,
-          lastValueVisible: true,
-        });
-
-        line.setData(data.map(c => ({
+        const mappedData = data.map(c => ({
           time: c.time as UTCTimestamp,
           value: c.close,
-        })));
+        }));
 
-        compareSeries.push(line);
+        if (chartType === 'area') {
+          // Parse hex color to rgba for gradient fills
+          const hex = cs.color.replace('#', '');
+          const r = parseInt(hex.substring(0, 2), 16);
+          const g = parseInt(hex.substring(2, 4), 16);
+          const b = parseInt(hex.substring(4, 6), 16);
+
+          const areaSeries = chart.addSeries(AreaSeries, {
+            lineColor: cs.color,
+            topColor: `rgba(${r},${g},${b},0.25)`,
+            bottomColor: `rgba(${r},${g},${b},0.02)`,
+            lineWidth: 2,
+            priceLineVisible: false,
+            lastValueVisible: true,
+          });
+          areaSeries.setData(mappedData);
+          compareSeries.push(areaSeries as unknown as ISeriesApi<'Line'>);
+        } else {
+          const line = chart.addSeries(LineSeries, {
+            color: cs.color,
+            lineWidth: 2,
+            priceLineVisible: false,
+            lastValueVisible: true,
+          });
+          line.setData(mappedData);
+          compareSeries.push(line);
+        }
       }
     }
 
@@ -270,7 +298,7 @@
     {/if}
 
     <!-- Collapse Toggle (collapsed state) -->
-    {#if indicators.length > 0 && indicatorsCollapsed}
+    {#if !isCompareMode && indicators.length > 0 && indicatorsCollapsed}
       <button
         class="pointer-events-auto flex items-center gap-1 font-mono text-[10px] text-muted-foreground hover:text-foreground transition-colors w-fit"
         onclick={() => indicatorsCollapsed = false}
@@ -280,8 +308,8 @@
       </button>
     {/if}
 
-    <!-- Indicator Chips -->
-    {#if !indicatorsCollapsed}
+    <!-- Indicator Chips (hidden in compare mode) -->
+    {#if !indicatorsCollapsed && !isCompareMode}
       {#each indicators as ind}
         <div class="pointer-events-auto flex items-center gap-0.5 font-mono text-[11px] backdrop-blur-sm bg-background/50 rounded w-fit border border-border/30">
           <!-- Color dots for enabled lines -->
@@ -332,6 +360,7 @@
           </button>
         </div>
       {/each}
+    {/if}
 
       <!-- Compare Symbol Chips -->
       {#each compareSymbols as cs}
@@ -366,7 +395,7 @@
       {/each}
 
       <!-- Collapse Toggle (expanded state) — at bottom -->
-      {#if indicators.length > 0}
+      {#if !isCompareMode && indicators.length > 0}
         <button
           class="pointer-events-auto flex items-center gap-1 font-mono text-[10px] text-muted-foreground hover:text-foreground transition-colors w-fit"
           onclick={() => indicatorsCollapsed = true}
@@ -374,7 +403,6 @@
           <ChevronUp class="size-3" />
         </button>
       {/if}
-    {/if}
   </div>
 
   <!-- Settings Popup (rendered as a floating panel) -->

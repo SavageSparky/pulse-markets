@@ -257,9 +257,9 @@
     };
   });
 
-  // Force line chart when in compare mode
+  // Force line or area chart when in compare mode (candles not supported)
   $effect(() => {
-    if (isCompareMode && chartType !== "line") {
+    if (isCompareMode && chartType !== "line" && chartType !== "area") {
       chartType = "line";
     }
   });

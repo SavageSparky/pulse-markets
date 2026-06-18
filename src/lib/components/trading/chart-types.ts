@@ -42,8 +42,8 @@ export const PRESET_COLORS = [
 ];
 
 export const COMPARE_COLORS = [
-  '#4aa3df', '#f39c12', '#2ebd85', '#e74c3c', '#9b59b6',
-  '#1abc9c', '#e67e22', '#fd79a8', '#3498db', '#d35400',
+  '#f39c12', '#2ebd85', '#e74c3c', '#9b59b6', '#1abc9c',
+  '#e67e22', '#fd79a8', '#3498db', '#d35400', '#f1c40f',
 ];
 
 export interface CompareSymbol {
